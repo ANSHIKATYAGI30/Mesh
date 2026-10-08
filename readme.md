@@ -41,6 +41,9 @@ The web prototype is used as the visual and interaction reference for the Androi
 
 > The final application is being developed in **Kotlin**.
 
+<img width="556" height="835" alt="image" src="https://github.com/user-attachments/assets/d20e3a91-117c-4ce9-ac4a-6958e36929bc" />
+
+
 ## 🎨 Design
 
 MESH follows a minimal, dark, radar-inspired interface.
@@ -93,7 +96,3 @@ device identity, and activity.
 - Messaging
 - Appearance
 - About
-
-
-│
-└── MainActivity.kt

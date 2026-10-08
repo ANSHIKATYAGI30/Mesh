@@ -20,7 +20,7 @@ on the internet or a central server.
 
 ## 🛠️ Tech Stack
 
-### Android Application
+### Android Application (Under development as of now)
 
 - Kotlin
 - Jetpack Compose

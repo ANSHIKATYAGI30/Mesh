@@ -22,25 +22,195 @@ type Status = "Sending" | "Sent" | "Delivered" | "Failed";
 type Msg = { id: number; from: "me" | string; text: string; status: Status; hops: number };
 type Peer = { id: string; name: string; rssi: number; connected: boolean };
 
+const STORAGE_KEY = "mesh-app-state-v1";
+const STORAGE_VERSION = 1 as const;
+
+type PersistedAppState = {
+  version: typeof STORAGE_VERSION;
+  peers: Peer[];
+  msgs: Record<string, Msg[]>;
+  log: string[];
+  discovery: boolean;
+};
+
 const MY_ID = "MESH-7F3A-91C2";
 const initialPeers: Peer[] = [
   { id: "MESH-A1B2-0C44", name: "Pixel 8", rssi: -48, connected: true },
   { id: "MESH-99DE-71FA", name: "Galaxy S23", rssi: -63, connected: false },
   { id: "MESH-3C0F-22BE", name: "OnePlus 11", rssi: -79, connected: false },
 ];
+const initialMessages: Record<string, Msg[]> = {
+  "MESH-A1B2-0C44": [
+    { id: 1, from: "MESH-A1B2-0C44", text: "Hey, you on the mesh?", status: "Delivered", hops: 1 },
+  ],
+  group: [
+    { id: 2, from: "MESH-99DE-71FA", text: "Camp group check-in 🏕️", status: "Delivered", hops: 2 },
+  ],
+};
+const initialLog = ["Discovery started", "Connected to Pixel 8"];
 const tabs = ["Home", "Nearby", "Chats", "Profile", "Settings"] as const;
 type Tab = (typeof tabs)[number];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStatus(value: unknown): value is Status {
+  return value === "Sending" || value === "Sent" || value === "Delivered" || value === "Failed";
+}
+
+function isPeer(value: unknown): value is Peer {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.rssi === "number" &&
+    Number.isFinite(value.rssi) &&
+    typeof value.connected === "boolean"
+  );
+}
+
+function isPeerArray(value: unknown): value is Peer[] {
+  return Array.isArray(value) && value.every(isPeer);
+}
+
+function isMessage(value: unknown): value is Msg {
+  return (
+    isRecord(value) &&
+    typeof value.id === "number" &&
+    Number.isFinite(value.id) &&
+    typeof value.from === "string" &&
+    typeof value.text === "string" &&
+    isStatus(value.status) &&
+    typeof value.hops === "number" &&
+    Number.isFinite(value.hops)
+  );
+}
+
+function isMessageMap(value: unknown): value is Record<string, Msg[]> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      (messages) => Array.isArray(messages) && messages.every(isMessage),
+    )
+  );
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function warnInvalidStoredField(field: string) {
+  console.warn(`MESH localStorage field "${field}" is invalid; using its default value.`);
+}
+
+function loadPersistedState(): PersistedAppState {
+  const defaults: PersistedAppState = {
+    version: STORAGE_VERSION,
+    peers: initialPeers,
+    msgs: initialMessages,
+    log: initialLog,
+    discovery: true,
+  };
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw === null) return defaults;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      console.warn("MESH localStorage contains invalid JSON; using default state.", error);
+      return defaults;
+    }
+
+    if (!isRecord(parsed) || parsed.version !== STORAGE_VERSION) {
+      console.warn("MESH localStorage has an invalid or unsupported format; using default state.");
+      return defaults;
+    }
+
+    let peers = defaults.peers;
+    if (isPeerArray(parsed.peers)) {
+      peers = parsed.peers;
+    } else {
+      warnInvalidStoredField("peers");
+    }
+
+    let msgs = defaults.msgs;
+    if (isMessageMap(parsed.msgs)) {
+      msgs = parsed.msgs;
+    } else {
+      warnInvalidStoredField("msgs");
+    }
+
+    let log = defaults.log;
+    if (isStringArray(parsed.log)) {
+      // Keep the existing activity list limit.
+      log = parsed.log.slice(0, 8);
+    } else {
+      warnInvalidStoredField("log");
+    }
+
+    let discovery = defaults.discovery;
+    if (typeof parsed.discovery === "boolean") {
+      discovery = parsed.discovery;
+    } else {
+      warnInvalidStoredField("discovery");
+    }
+
+    return {
+      version: STORAGE_VERSION,
+      peers,
+      msgs,
+      log,
+      discovery,
+    };
+  } catch (error) {
+    console.warn("Unable to read MESH state from localStorage; using default state.", error);
+    return defaults;
+  }
+}
 
 function App() {
   const [tab, setTab] = useState<Tab>("Home");
   const [peers, setPeers] = useState(initialPeers);
   const [chat, setChat] = useState<string | null>(null);
-  const [msgs, setMsgs] = useState<Record<string, Msg[]>>({
-    "MESH-A1B2-0C44": [{ id: 1, from: "MESH-A1B2-0C44", text: "Hey, you on the mesh?", status: "Delivered", hops: 1 }],
-    group: [{ id: 2, from: "MESH-99DE-71FA", text: "Camp group check-in 🏕️", status: "Delivered", hops: 2 }],
-  });
-  const [log, setLog] = useState<string[]>(["Discovery started", "Connected to Pixel 8"]);
+  const [msgs, setMsgs] = useState<Record<string, Msg[]>>(initialMessages);
+  const [log, setLog] = useState<string[]>(initialLog);
   const [discovery, setDiscovery] = useState(true);
+  const [storageLoaded, setStorageLoaded] = useState(false);
+
+  useEffect(() => {
+    const saved = loadPersistedState();
+    setPeers(saved.peers);
+    setMsgs(saved.msgs);
+    setLog(saved.log);
+    setDiscovery(saved.discovery);
+    setStorageLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!storageLoaded) return;
+
+    const stateToSave: PersistedAppState = {
+      version: STORAGE_VERSION,
+      peers,
+      msgs,
+      log,
+      discovery,
+    };
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+    } catch (error) {
+      console.warn(
+        "Unable to save MESH state to localStorage. Changes remain available for this session.",
+        error,
+      );
+    }
+  }, [storageLoaded, peers, msgs, log, discovery]);
+
   const addLog = (s: string) => setLog((l) => [s, ...l].slice(0, 8));
 
   const toggle = (id: string) =>
@@ -61,6 +231,7 @@ function App() {
     setTimeout(() => upd(online ? "Sent" : "Failed"), 600);
     if (online) setTimeout(() => upd("Delivered"), 1400);
   };
+
   const retry = (key: string, id: number) => {
     const m = (msgs[key] ?? []).find((x) => x.id === id);
     if (!m) return;
@@ -183,9 +354,11 @@ function App() {
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-2xl bg-card border border-border p-4">{children}</div>;
 }
+
 function Label({ children }: { children: React.ReactNode }) {
   return <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1">{children}</p>;
 }
+
 function Btn({ children, onClick, variant = "solid" }: { children: React.ReactNode; onClick?: () => void; variant?: "solid" | "ghost" }) {
   return (
     <button onClick={onClick}

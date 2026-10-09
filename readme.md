@@ -20,26 +20,8 @@ on the internet or a central server.
 
 ## 🛠️ Tech Stack
 
-### Android Application (Under development as of now)
-
-- Kotlin
-- Jetpack Compose
-- Room
-- Kotlin Coroutines & Flow
-- Android Nearby Device APIs
-- MVVM + Repository Architecture
-
 ### Prototype
-
-The initial UI/UX prototype was built using:
-
-- TypeScript
-- React / TSX
-- CSS
-
-The web prototype is used as the visual and interaction reference for the Android implementation.
-
-> The final application is being developed in **Kotlin**.
+The web prototype is used as the visual and interaction reference for further implementation.
 
 <img width="556" height="835" alt="image" src="https://github.com/user-attachments/assets/d20e3a91-117c-4ce9-ac4a-6958e36929bc" />
 
